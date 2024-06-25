@@ -6,109 +6,148 @@ namespace OneSourceTaskScheduler.Repositories
 {
     public class OneSourceRepository : IOneSourceRepository
     {
-        private readonly OneSourceContext _context;
+        private readonly IDbContextFactory<OneSourceContext> _contextFactory;
 
-        public OneSourceRepository(OneSourceContext context)
+        public OneSourceRepository(IDbContextFactory<OneSourceContext> contextFactory)
         {
-            _context = context;
+            _contextFactory = contextFactory;
+        }
+
+        public async Task MigrateDatabaseAsync()
+        {
+            using var context = await _contextFactory.CreateDbContextAsync();
+
+            await context.Database.MigrateAsync();
         }
 
         public async Task<int> CountAsync<TEntity>(Expression<Func<TEntity, bool>> predicate) where TEntity : class
         {
-            return  await _context.Set<TEntity>().CountAsync(predicate);
+            using var context = await _contextFactory.CreateDbContextAsync();
+
+            return  await context.Set<TEntity>().CountAsync(predicate);
         }
 
         public async Task RemoveAsync<TEntity>(IReadOnlyList<TEntity> entities) where TEntity : class
         {
-            _context.Set<TEntity>().RemoveRange(entities);
+            using var context = await _contextFactory.CreateDbContextAsync();
 
-            await _context.SaveChangesAsync();
+            context.Set<TEntity>().RemoveRange(entities);
+
+            await context.SaveChangesAsync();
         }
 
         public async Task RemoveAsync<TEntity>(TEntity entity) where TEntity : class
         {
-            _context.Set<TEntity>().Remove(entity);
+            using var context = await _contextFactory.CreateDbContextAsync();
 
-            await _context.SaveChangesAsync();
+            context.Set<TEntity>().Remove(entity);
+
+            await context.SaveChangesAsync();
         }
 
         public async Task<IReadOnlyList<TEntity>> GetAsync<TEntity>(Expression<Func<TEntity, bool>> predicate) where TEntity : class
         {
-            return await _context.Set<TEntity>().Where(predicate).ToListAsync();
+            using var context = await _contextFactory.CreateDbContextAsync();
+
+            return await context.Set<TEntity>().Where(predicate).ToListAsync();
         }
 
         public async Task<IReadOnlyList<TEntity>> GetAsync<TEntity, TProperty>(Expression<Func<TEntity, bool>> predicate, Expression<Func<TEntity, TProperty>> include) where TEntity : class
         {
-            return await _context.Set<TEntity>().Where(predicate).Include(include).ToListAsync();
+            using var context = await _contextFactory.CreateDbContextAsync();
+
+            return await context.Set<TEntity>().Where(predicate).Include(include).ToListAsync();
         }
 
         public async Task<IReadOnlyList<TEntity>> GetAllAsync<TEntity>() where TEntity : class
         {
-            return await _context.Set<TEntity>().ToListAsync();
+            using var context = await _contextFactory.CreateDbContextAsync();
+
+            return await context.Set<TEntity>().ToListAsync();
         }
 
         public async Task<IReadOnlyList<TEntity>> GetAllAsync<TEntity, TProperty>(Expression<Func<TEntity, TProperty>> include) where TEntity : class
         {
-            return await _context.Set<TEntity>().Include(include).ToListAsync();
+            using var context = await _contextFactory.CreateDbContextAsync();
+
+            return await context.Set<TEntity>().Include(include).ToListAsync();
         }
 
-        public IQueryable<TEntity> GetQuery<TEntity>() where TEntity : class
+        public async Task<IQueryable<TEntity>> GetQuery<TEntity>() where TEntity : class
         {
-            return _context.Set<TEntity>().AsQueryable();
+            using var context = await _contextFactory.CreateDbContextAsync();
+
+            return context.Set<TEntity>().AsQueryable();
         }
 
         public async Task<IReadOnlyList<TEntity>> GetAllOrderedAsync<TEntity, TProperty>(Expression<Func<TEntity, TProperty>> orderBy) where TEntity : class
         {
-            var query = _context.Set<TEntity>().OrderBy(orderBy);
+            using var context = await _contextFactory.CreateDbContextAsync();
+
+            var query = context.Set<TEntity>().OrderBy(orderBy);
             
             return await query.ToListAsync();
         }
 
         public async Task AddAsync<TEntity>(TEntity entity) where TEntity : class
         {
-            _context.Set<TEntity>().Add(entity);
+            using var context = await _contextFactory.CreateDbContextAsync();
 
-            await _context.SaveChangesAsync();
+            context.Set<TEntity>().Add(entity);
+
+            await context.SaveChangesAsync();
         }
 
         public async Task<int> AddManyAsync<TEntity>(IEnumerable<TEntity> entities) where TEntity : class
         {
-            _context.Set<TEntity>().AddRange(entities);
+            using var context = await _contextFactory.CreateDbContextAsync();
 
-            return await _context.SaveChangesAsync();
+            context.Set<TEntity>().AddRange(entities);
+
+            return await context.SaveChangesAsync();
         }
 
         public async Task<IReadOnlyList<TEntity>> GetOrderedAsync<TEntity, TProperty>(Expression<Func<TEntity, TProperty>> orderBy, Expression<Func<TEntity, bool>> predicate) where TEntity : class
         {
-            var query = _context.Set<TEntity>().Where(predicate).OrderBy(orderBy);
+            using var context = await _contextFactory.CreateDbContextAsync();
+
+            var query = context.Set<TEntity>().Where(predicate).OrderBy(orderBy);
 
             return await query.ToListAsync();
         }
 
         public async Task<TEntity> GetOneAsync<TEntity>(Expression<Func<TEntity, bool>> predicate) where TEntity : class
         {
-            var entity = await _context.Set<TEntity>().FirstOrDefaultAsync(predicate);
+            using var context = await _contextFactory.CreateDbContextAsync();
+
+            var entity = await context.Set<TEntity>().FirstOrDefaultAsync(predicate);
 
             return entity;
         }
 
         public async Task<int> UpdateAsync<TEntity>(TEntity entity) where TEntity : class
         {
-            _context.Set<TEntity>().Update(entity);
+            using var context = await _contextFactory.CreateDbContextAsync();
 
-            return await _context.SaveChangesAsync();
+            context.Set<TEntity>().Update(entity);
+
+            return await context.SaveChangesAsync();
         }
 
         public async Task<int> UpdateRangeAsync<TEntity>(params TEntity[] entities) where TEntity : class
         {
-            _context.Set<TEntity>().UpdateRange(entities);
+            using var context = await _contextFactory.CreateDbContextAsync();
 
-            return await _context.SaveChangesAsync();
+            context.Set<TEntity>().UpdateRange(entities);
+
+            return await context.SaveChangesAsync();
         }
 
         public async Task<int> ExecuteSqlRawAsync(string sql)
         {
-            int rowsAffected= await _context.Database.ExecuteSqlRawAsync(sql);
+            using var context = await _contextFactory.CreateDbContextAsync();
+
+            int rowsAffected= await context.Database.ExecuteSqlRawAsync(sql);
 
             return rowsAffected;
         }

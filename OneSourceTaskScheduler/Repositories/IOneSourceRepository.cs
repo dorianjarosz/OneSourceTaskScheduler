@@ -4,6 +4,7 @@ namespace OneSourceTaskScheduler.Repositories
 {
     public interface IOneSourceRepository
     {
+        Task MigrateDatabaseAsync();
 
         Task<int> UpdateAsync<TEntity>(TEntity entity) where TEntity : class;
 
@@ -33,7 +34,7 @@ namespace OneSourceTaskScheduler.Repositories
 
         Task<int> AddManyAsync<TEntity>(IEnumerable<TEntity> entities) where TEntity : class;
 
-        IQueryable<TEntity> GetQuery<TEntity>() where TEntity : class;
+        Task<IQueryable<TEntity>> GetQuery<TEntity>() where TEntity : class;
 
         Task<int> ExecuteSqlRawAsync(string sql);
     }
