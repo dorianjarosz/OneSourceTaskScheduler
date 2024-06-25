@@ -105,5 +105,12 @@ namespace OneSourceTaskScheduler.Repositories
 
             return await _context.SaveChangesAsync();
         }
+
+        public async Task<int> ExecuteSqlRawAsync(string sql)
+        {
+            int rowsAffected= await _context.Database.ExecuteSqlRawAsync(sql);
+
+            return rowsAffected;
+        }
     }
 }

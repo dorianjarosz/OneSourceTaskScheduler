@@ -1,11 +1,15 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
-using OneSourceTaskScheduler.Data;
+using Newtonsoft.Json.Linq;
+using OneSource.Data.Entities;
 using OneSourceTaskScheduler.Data.Entities;
 using OneSourceTaskScheduler.Repositories;
+using OneSourceTaskScheduler.Security;
+using OneSourceTaskScheduler.Services.Dtos;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 
@@ -260,13 +264,12 @@ namespace OneSourceTaskScheduler.Services
                     await RunScriptTasks(taskName, startedTaskDateTime);
                 }
 
-                var schedule = await dbContext.Schedules.Where(s => s.taskName == taskName).ToListAsync();
-                foreach (var item in schedule)
+                var schedules = await _repository.GetAsync<Schedules>(s => s.taskName == taskName);
+                foreach (var schedule in schedules)
                 {
-                    item.Active = false;
+                    schedule.Active = false;
+                    await _repository.UpdateAsync(schedule);
                 }
-                await dbContext.SaveChangesAsync();
-
             }
             else
             {
@@ -283,9 +286,9 @@ namespace OneSourceTaskScheduler.Services
             var StartedTask = startedTaskDateTime;
 
             var url = "";
-            var task = dbContext.Tasks.Where(t => t.taskName == taskName).FirstOrDefault();
-            var login = dbContext.Tasks.Where(t => t.taskName == taskName).Select(column => column.Credential).FirstOrDefault();
-            var apiInfo = dbContext.Api.Where(x => x.CustomerName == task.CustomerName && x.ApiName == task.APIName).FirstOrDefault();
+            var task = await _repository.GetOneAsync<Tasks>(t => t.taskName == taskName);
+            var login = (await _repository.GetOneAsync<Tasks>(t => t.taskName == taskName)).Credential;
+            var apiInfo = await _repository.GetOneAsync<Api>(x => x.CustomerName == task.CustomerName && x.ApiName == task.APIName);
             string parameters = task.fromDate.ToString();
             string[] param = parameters.Split(", ");
             if (task.fromDate.EndsWith("hours"))
@@ -380,7 +383,7 @@ namespace OneSourceTaskScheduler.Services
                 url = $"{apiInfo.EndPointPath}?clientID={clientID}";
             }
 
-            var systemInfo = dbContext.Systems.Where(x => x.CustomerName == task.CustomerName).FirstOrDefault();
+            var systemInfo = await _repository.GetOneAsync<Systems>(x => x.CustomerName == task.CustomerName);
             string username = systemInfo.OneSourceLogin;
             string password = systemInfo.OneSourcePassword;
             string credentials = Convert.ToBase64String(Encoding.ASCII.GetBytes(username + ":" + password));
@@ -446,12 +449,12 @@ namespace OneSourceTaskScheduler.Services
             DateTime StartedTask;
 
             var url = "";
-            var task = dbContext.Tasks.Where(t => t.taskName == taskName).FirstOrDefault();
+            var task = await _repository.GetOneAsync<Tasks>(t => t.taskName == taskName);
 
-            var system = await dbContext.Systems.FirstOrDefaultAsync(x => x.CustomerName == task.CustomerName
+            var system = await _repository.GetOneAsync<Systems>(x => x.CustomerName == task.CustomerName
                                 && x.System == task.SystemType && x.SystemType == task.EnvironmentNames);
-            var apiInfo = dbContext.Api.Where(s => s.System == system.System && s.CustomerName == system.CustomerName &&
-                                                s.SystemType == system.SystemType).FirstOrDefault();
+            var apiInfo = await _repository.GetOneAsync<Api>(s => s.System == system.System && s.CustomerName == system.CustomerName &&
+                                                s.SystemType == system.SystemType);
             string parameters = task.fromDate?.ToString() ?? "";
             string[] param = parameters.Split(", ");
 
@@ -597,7 +600,7 @@ namespace OneSourceTaskScheduler.Services
                         }
                         else if (task.DestinationServiceOption == "externalInstance")
                         {
-                            var customer = await dbContext.Customers.FirstOrDefaultAsync(x => x.CustomerName == task.CustomerName);
+                            var customer = await _repository.GetOneAsync<Customers>(x => x.CustomerName == task.CustomerName);
 
                             strUrl = customer.OneSourceURL + task.ServiceAPIEndpoint;
                         }
@@ -624,25 +627,21 @@ namespace OneSourceTaskScheduler.Services
 
         private async Task RunScriptTasks(string taskName, DateTime startedTaskDateTime)
         {
-            var scriptInfo = dbContext.Scripts.Where(s => s.TaskName == taskName).FirstOrDefault();
+            var scriptInfo = await _repository.GetOneAsync<Scripts>(s => s.TaskName == taskName);
             string Script = await GetScriptAsync(taskName);
-            await dbContext.Database.ExecuteSqlRawAsync(Script);
+            await _repository.ExecuteSqlRawAsync(Script);
             await LogsUpdate(taskName, startedTaskDateTime);
 
             async Task<string> GetScriptAsync(string taskName)
             {
-                var script = await dbContext.Scripts
-                .Where(s => s.TaskName == taskName)
-                .Select(column => column.Script)
-                .FirstOrDefaultAsync();
+                var script = (await _repository.GetOneAsync<Scripts>(s => s.TaskName == taskName)).Script;
+
                 return script.ToString();
             }
         }
         private async Task RunSnowTasks(string taskName, DateTime startedTaskDateTime)
         {
-            var taskInfo = await Context.Tasks
-            .Where(t => t.taskName == taskName)
-            .FirstOrDefaultAsync();
+            var taskInfo = await _repository.GetOneAsync<Tasks>(t => t.taskName == taskName);
 
             var reloadDataInBatchesDto = new ReloadDataInBatchesDto
             {
@@ -1309,6 +1308,275 @@ namespace OneSourceTaskScheduler.Services
             }
 
             return null; // Offset does not match any time zone
+        }
+
+        private async Task<ReloadDataInBatchesResultDto> ReloadDataInBatches(ReloadDataInBatchesDto dto)
+        {
+            var resultDto = new ReloadDataInBatchesResultDto();
+
+            var loadDataFromFirstBatchDto = new LoadDataFromFirstBatchDto
+            {
+                SourceTableName = dto.SourceTableName,
+                SelectedDestTable = dto.SelectedDestTable,
+                Customer = dto.Customer,
+                BatchSize = dto.BatchSize,
+                AdditionalQuery = dto.AdditionalQuery,
+                DateField = dto.DateField,
+                EndDate = dto.EndDate,
+                FavSelected = dto.FavSelected,
+                FieldsList = dto.FieldsList,
+                FromDate = dto.FromDate,
+                Operation = dto.Operation,
+                FilterName = dto.FilterName,
+                TaskName = dto.TaskName
+            };
+
+            var loadDataFromFirstBatchResultDto = await LoadDataFromFirstBatch(loadDataFromFirstBatchDto);
+
+            resultDto.ProcessedTicketsCount = loadDataFromFirstBatchResultDto.UpdateLog;
+
+            if (!loadDataFromFirstBatchResultDto.Succeeded)
+            {
+                resultDto.Succeeded = loadDataFromFirstBatchResultDto.Succeeded;
+                resultDto.ExceptionMessage = loadDataFromFirstBatchResultDto.ExceptionMessage;
+                resultDto.StackTrace = loadDataFromFirstBatchResultDto.StackTrace;
+
+                return resultDto;
+            }
+
+            if (string.IsNullOrWhiteSpace(loadDataFromFirstBatchResultDto.NextLink))
+            {
+                resultDto.Succeeded = loadDataFromFirstBatchResultDto.Succeeded;
+                return resultDto;
+            }
+
+
+            var loadDataFromNextBatchDto = new LoadDataFromNextBatchDto
+            {
+                TaskName = dto.TaskName,
+                Iteration = 1,
+                NextLink = loadDataFromFirstBatchResultDto.NextLink,
+                CurrentOffset = loadDataFromFirstBatchResultDto.CurrentOffset,
+                Customer = loadDataFromFirstBatchDto.Customer,
+                SelectedDestTable = loadDataFromFirstBatchDto.SelectedDestTable,
+                SourceTableName = loadDataFromFirstBatchDto.SourceTableName,
+
+            };
+
+            for (int i = loadDataFromNextBatchDto.Iteration; i < 5; i++)
+            {
+                if (loadDataFromNextBatchDto.Iteration < 5 &&
+                    !string.IsNullOrWhiteSpace(loadDataFromNextBatchDto.NextLink))
+                {
+                    var loadDataFromNextBatchResultDto = await LoadDataFromNextBatch(loadDataFromNextBatchDto);
+
+                    if (!loadDataFromNextBatchResultDto.Succeeded)
+                    {
+                        resultDto.ExceptionMessage = loadDataFromNextBatchResultDto.ExceptionMessage;
+                        resultDto.StackTrace = loadDataFromNextBatchResultDto.StackTrace;
+                        resultDto.Succeeded = false;
+                        return resultDto;
+                    }
+                    else
+                    {
+                        resultDto.ProcessedTicketsCount = loadDataFromNextBatchResultDto.UpdateLog;
+
+                        loadDataFromNextBatchDto.Iteration = loadDataFromNextBatchResultDto.Iteration;
+                        loadDataFromNextBatchDto.NextLink = loadDataFromNextBatchResultDto.NextLink;
+                        loadDataFromNextBatchDto.CurrentOffset = loadDataFromNextBatchResultDto.CurrentOffset;
+                    }
+                }
+                else
+                {
+                    resultDto.Succeeded = true;
+                    return resultDto;
+                }
+            }
+
+            resultDto.Succeeded = true;
+            return resultDto;
+        }
+
+        private async Task<LoadDataFromFirstBatchResultDto> LoadDataFromFirstBatch(LoadDataFromFirstBatchDto dto)
+        {
+            LoadDataFromFirstBatchResultDto resultDto = new LoadDataFromFirstBatchResultDto();
+
+            int count = 0;
+
+            string totalCount = "";
+
+            try
+            {
+                dto.SourceTableName = HtmlSanitizer.sanitize(dto.SourceTableName);
+                dto.SelectedDestTable = HtmlSanitizer.sanitize(dto.SelectedDestTable);
+                dto.FavSelected = HtmlSanitizer.sanitize(dto.FavSelected);
+
+                SnowApiFilter filter = null;
+
+                if (dto.FilterName != null)
+                {
+                    filter = await _repository.GetOneAsync<SnowApiFilter>(x => x.FilterName == dto.FilterName && x.SnowTableTechnical == dto.SourceTableName);
+
+                    if (filter == null)
+                    {
+                        throw new NullReferenceException($"The '{dto.FilterName}' filter does not exist in the database.");
+                    }
+                }
+
+                var task = await _repository.GetOneAsync<Tasks>(x => x.taskName == dto.TaskName);
+
+                var customer = await _repository.GetOneAsync<Customers>(x => x.CustomerName == dto.Customer);
+
+                string urlQuery = GetUrlQuery(operation: dto.Operation,
+                    fromDate: dto.FromDate.ToString("yyyy-MM-dd HH:mm:ss"),
+                    endDate: dto.EndDate.ToString("yyyy-MM-dd HH:mm:ss"),
+                    dateField: dto.DateField,
+                    additionalQuery: dto.AdditionalQuery,
+                    globalFilter: filter?.Query ?? "");
+
+                var tableConfigEntity = (await _repository.GetAsync<SNOWApiTableConfiguration, ICollection<SNOWApiColumnConfiguration>>(x => x.TechnicalTableName == dto.SourceTableName && x.SqlTableName == dto.SelectedDestTable, x => x.SnowTableColumnConfigurations)).FirstOrDefault();
+
+                var configEntities = await _repository.GetAsync<Configuration>(x => x.Name == "SnowUrl");
+
+                var system = await _repository.GetOneAsync<Systems>(s => s.CustomerName == task.CustomerName && s.System == task.SystemType && s.SystemType == task.EnvironmentNames);
+
+                string urlDomain = system.RootURL;
+
+                string urlfields = "&sysparm_fields=" + dto.FieldsList;
+
+                string urlAPI = string.Format("/api/now/table/{0}?sysparm_display_value=" + tableConfigEntity.Param.ToString().ToLower() + "&sysparm_exclude_reference_link=true", dto.SourceTableName);
+
+                string urlLimitationData;
+
+                urlLimitationData = "&sysparm_limit=" + (dto.BatchSize != null ? dto.BatchSize : 500);
+
+                string urlOffset = "&sysparm_offset=0";
+
+                string nextLink = urlDomain + urlAPI + urlQuery + urlfields + urlOffset + urlLimitationData;
+
+                string headers = "";
+                string last = "";
+
+                string systemLogin;
+                string systemPassword;
+
+                if (system.SystemLogin == task.Credential)
+                {
+                    systemLogin = task.Credential;
+                    systemPassword = system.SystemPassword;
+                }
+                else
+                {
+                    var systemCreds = await _repository.GetOneAsync<SystemCredentials>(x => x.SystemLogin == task.Credential);
+
+                    systemLogin = systemCreds.SystemLogin;
+                    systemPassword = systemCreds.SystemPassword;
+                }
+
+                var request = await ConnectSnowv4(nextLink, dto.Customer, systemLogin, systemPassword);
+
+                HttpWebResponse response;
+
+                try
+                {
+                    response = (HttpWebResponse)request.GetResponse();
+
+                    _logger.LogDebug("Successfully returned response from the link: " + nextLink);
+                }
+                catch (WebException ex)
+                {
+                    _logger.LogError(ex, ex.ToString());
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, ex.ToString());
+                    throw;
+                }
+
+                string sResponseFromServer;
+                using (Stream stream = response.GetResponseStream())
+                {
+                    using (StreamReader reader = new StreamReader(stream))
+                    {
+                        sResponseFromServer = reader.ReadToEnd();
+                    }
+                }
+
+                headers = response.GetResponseHeader("Link");
+                totalCount = response.GetResponseHeader("X-Total-Count");
+                var link = LinksFromHeader(headers);
+                if (headers == "")
+                {
+                    nextLink = null;
+                }
+                else
+                {
+                    nextLink = link.NextLink;
+                    last = link.LastLink;
+                }
+
+                var responseJson = JObject.Parse(sResponseFromServer);
+
+                count = responseJson["result"].Count();
+
+                if (count == 0)
+                {
+                    resultDto.Succeeded = true;
+                    resultDto.NextLink = "";
+                    resultDto.UpdateLog = "0/0";
+                    resultDto.TotalCount = 0;
+                    resultDto.CurrentOffset = 0;
+
+                    _logger.LogInformation("Processed " + resultDto.UpdateLog + $" SNOW tickets by the task '{dto.TaskName}'.");
+
+                    return resultDto;
+                }
+
+                string snowResponsestr = JsonConvert.SerializeObject(responseJson["result"]);
+
+                bool succeded = await UpdateDB(tableConfigEntity.TableNameVariable, snowResponsestr, task, customer);
+
+                resultDto.Succeeded = succeded;
+
+                resultDto.NextLink = nextLink;
+                resultDto.UpdateLog = count.ToString() + "/" + totalCount;
+                resultDto.TotalCount = int.Parse(totalCount);
+                resultDto.CurrentOffset = count;
+
+                if (resultDto.Succeeded)
+                    _logger.LogInformation("Processed " + resultDto.UpdateLog + $" SNOW tickets by the task '{dto.TaskName}'.");
+                else
+                    _logger.LogError("Tried to process " + resultDto.UpdateLog + $" SNOW tickets by the task '{dto.TaskName}', but an error occured during the operation.");
+
+                return resultDto;
+            }
+            catch (Exception ex)
+            {
+                int totalCountInt = 0;
+
+                if (!string.IsNullOrEmpty(totalCount))
+                {
+                    totalCountInt = int.Parse(totalCount);
+                }
+                else
+                {
+                    totalCountInt = count;
+                }
+
+                resultDto.UpdateLog = count + "/" + totalCountInt;
+                resultDto.TotalCount = totalCountInt;
+                resultDto.CurrentOffset = count;
+
+                resultDto.ExceptionMessage = ex.Message;
+                resultDto.StackTrace = ex.StackTrace;
+
+                _logger.LogError(ex, ex.Message);
+
+                _logger.LogError("Error occured, but processed " + resultDto.UpdateLog + $" SNOW tickets by the task '{dto.TaskName}'.");
+
+                return resultDto;
+            }
         }
     }
 }
