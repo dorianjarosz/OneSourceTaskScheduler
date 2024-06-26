@@ -22,6 +22,16 @@ namespace OneSourceTaskScheduler.Data
 
         public DbSet<TimeZones> TimeZones { get; set; }
 
+        public DbSet<SNOWApiTableConfiguration> SNOWApiTableConfigurations { get; set; }
+
+        public DbSet<SNOWApiColumnConfiguration> SNOWApiColumnConfigurations { get; set; }
+
+        public DbSet<Configuration> Configurations { get; set; }
+
+        public DbSet<SystemCredentials> SystemCredentials { get; set; }
+
+        public DbSet<SnowApiFilter> SnowApiFilters { get; set; }
+
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);

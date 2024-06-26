@@ -73,7 +73,7 @@ namespace OneSourceTaskScheduler.Repositories
             return await context.Set<TEntity>().Include(include).ToListAsync();
         }
 
-        public async Task<IQueryable<TEntity>> GetQuery<TEntity>() where TEntity : class
+        public async Task<IQueryable<TEntity>> GetQueryAsync<TEntity>() where TEntity : class
         {
             using var context = await _contextFactory.CreateDbContextAsync();
 

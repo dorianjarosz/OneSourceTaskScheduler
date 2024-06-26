@@ -1,5 +1,4 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using OneSource.Data.Entities;
@@ -7,23 +6,28 @@ using OneSourceTaskScheduler.Data.Entities;
 using OneSourceTaskScheduler.Repositories;
 using OneSourceTaskScheduler.Security;
 using OneSourceTaskScheduler.Services.Dtos;
+using OneSourceTaskScheduler.Services.Utils;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace OneSourceTaskScheduler.Services
 {
     public class TaskSchedulerService : ITaskSchedulerService
     {
         private readonly ILogger<TaskSchedulerService> _logger;
+        private readonly IConfiguration _configuration;
         private readonly IOneSourceRepository _repository;
 
-        public TaskSchedulerService(IOneSourceRepository repository, ILogger<TaskSchedulerService> logger)
+        public TaskSchedulerService(IOneSourceRepository repository, ILogger<TaskSchedulerService> logger, IConfiguration configuration)
         {
             _repository = repository;
             _logger = logger;
+            _configuration = configuration;
         }
 
         public async Task ScheduleTasks(CancellationToken stoppingToken)
@@ -37,11 +41,11 @@ namespace OneSourceTaskScheduler.Services
 
                     foreach (var activeTask in activeScheduledTasks)
                     {
-                        var start = await _repository.GetQuery<Schedules>()
+                        var start = await (await _repository.GetQueryAsync<Schedules>())
                             .Where(r => r.taskName == activeTask.taskName)
                             .Select(r => r.Start).FirstOrDefaultAsync();
 
-                        var scheduleLog = await _repository.GetQuery<Logs>()
+                        var scheduleLog = await (await _repository.GetQueryAsync<Logs>())
                             .OrderByDescending(x => x.startTime)
                             .Where(x => x.taskTitle == activeTask.taskName)
                             .FirstOrDefaultAsync();
@@ -110,9 +114,9 @@ namespace OneSourceTaskScheduler.Services
             {
                 if (activeTask.Source != "SQL Script")
                 {
-                    result = await _repository.GetQuery<Tasks>()
+                    result = await (await _repository.GetQueryAsync<Tasks>())
                .Join(
-                   _repository.GetQuery<Schedules>().Where(s => s.taskName == activeTask.taskName),
+                  (await _repository.GetQueryAsync<Schedules>()).Where(s => s.taskName == activeTask.taskName),
                    t1 => t1.taskName,
                    t2 => t2.taskName,
                    (t1, t2) => new { Table1 = t1, Table2 = t2 })
@@ -122,14 +126,14 @@ namespace OneSourceTaskScheduler.Services
                 }
                 if (activeTask.Source == "SQL Script")
                 {
-                    result = await _repository.GetQuery<Tasks>()
+                    result = await (await _repository.GetQueryAsync<Tasks>())
                     .Join(
-                        _repository.GetQuery<Schedules>().Where(s => s.taskName == activeTask.taskName),
+                        (await _repository.GetQueryAsync<Schedules>()).Where(s => s.taskName == activeTask.taskName),
                         t1 => t1.taskName,
                         t2 => t2.taskName,
                         (t1, t2) => new { Table1 = t1, Table2 = t2 })
                     .Join(
-                         _repository.GetQuery<Scripts>(),
+                        (await _repository.GetQueryAsync<Scripts>()),
                         t => t.Table1.taskName,
                         t3 => t3.TaskName,
                         (t, t3) => new { t.Table1, t.Table2, Table3 = t3 })
@@ -265,14 +269,13 @@ namespace OneSourceTaskScheduler.Services
                 }
 
                 var schedules = await _repository.GetAsync<Schedules>(s => s.taskName == taskName);
+
                 foreach (var schedule in schedules)
                 {
                     schedule.Active = false;
-                    await _repository.UpdateAsync(schedule);
                 }
-            }
-            else
-            {
+
+                await _repository.UpdateRangeAsync(schedules);
             }
         }
 
@@ -660,7 +663,7 @@ namespace OneSourceTaskScheduler.Services
                 FieldsList = taskInfo.FieldsList
             };
 
-            var reloadDataInBatchesResultDto = await _oneSourceService.ReloadDataInBatches(reloadDataInBatchesDto);
+            var reloadDataInBatchesResultDto = await ReloadDataInBatches(reloadDataInBatchesDto);
 
             var succeeded = reloadDataInBatchesResultDto.Succeeded;
 
@@ -691,16 +694,13 @@ namespace OneSourceTaskScheduler.Services
                         await RunSnowTasks(taskName, startedTaskDateTime);
                     }
 
-                    var schedule = await dbContext.Schedules.Where(s => s.taskName == taskName).ToListAsync();
-                    foreach (var item in schedule)
+                    var schedules = await _repository.GetAsync<Schedules>(s => s.taskName == taskName);
+                    foreach (var item in schedules)
                     {
                         item.Active = false;
                     }
-                    await dbContext.SaveChangesAsync();
-                }
-                else
-                {
 
+                    await _repository.UpdateRangeAsync(schedules);
                 }
             }
             else if (end == "Never" && end != "")
@@ -758,12 +758,12 @@ namespace OneSourceTaskScheduler.Services
                     }
                     else
                     {
-                        var schedule = await dbContext.Schedules.Where(s => s.taskName == taskName).ToListAsync();
-                        foreach (var item in schedule)
+                        var schedules = await _repository.GetAsync<Schedules>(s => s.taskName == taskName);
+                        foreach (var item in schedules)
                         {
                             item.Active = false;
                         }
-                        await dbContext.SaveChangesAsync();
+                        await _repository.UpdateRangeAsync(schedules);
                     }
                 }
                 else if (end == "Never" && end != "")
@@ -789,12 +789,13 @@ namespace OneSourceTaskScheduler.Services
             DateTime CheckEndDate = DateTime.Now;
             if (end != "Never" && end != "" && TaskEndDate < CheckEndDate)
             {
-                var schedule = await dbContext.Schedules.Where(s => s.taskName == taskName).ToListAsync();
-                foreach (var item in schedule)
+                var schedules = await _repository.GetAsync<Schedules>(s => s.taskName == taskName);
+                foreach (var item in schedules)
                 {
                     item.Active = false;
                 }
-                await dbContext.SaveChangesAsync();
+
+                await _repository.UpdateRangeAsync(schedules);
             }
 
         }
@@ -848,9 +849,9 @@ namespace OneSourceTaskScheduler.Services
                             }
                             else
                             {
-                                var ScheduleInfo = await Context.Schedules.FirstOrDefaultAsync(s => s.taskName == taskName);
+                                var ScheduleInfo = await _repository.GetOneAsync<Schedules>(s => s.taskName == taskName);
                                 ScheduleInfo.Active = false;
-                                Context.SaveChanges();
+                                _repository.UpdateAsync(ScheduleInfo);
                             }
                         }
                         else if (end == "Never" && end != "")
@@ -1310,6 +1311,244 @@ namespace OneSourceTaskScheduler.Services
             return null; // Offset does not match any time zone
         }
 
+        public async Task<DateTime> ConvertTimeZoneByHour(string timeString, string timezone)
+        {
+            // Parse the time
+            DateTime time = DateTime.ParseExact(timeString, "HH:mm", CultureInfo.InvariantCulture);
+
+            string offsetString = timezone.Replace("(", "").Replace("UTC", "").Replace("+", "").Replace(")", "");
+
+            // Parse the timezone offset
+            TimeSpan offset = TimeSpan.Parse(offsetString);
+
+            string timeZoneID = ConvertOffsetToTimeZoneID(offset);
+
+            // Find the target time zone by ID
+            TimeZoneInfo targetTimeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneID);
+
+            // Create a DateTimeOffset object with the time and the target time zone
+            DateTimeOffset dateTimeOffset = new DateTimeOffset(time, offset);
+
+            // Convert to the current system's local time
+            DateTime currentDatetime = dateTimeOffset.ToOffset(DateTimeOffset.Now.Offset).DateTime;
+
+            TimeZoneInfo systemTimeZone = TimeZoneInfo.Local;
+            TimeSpan offsetSystem = systemTimeZone.BaseUtcOffset;
+
+            if (offsetSystem == targetTimeZone.BaseUtcOffset)
+            {
+                currentDatetime = time;
+            }
+
+            await Task.Delay(0); // Optional delay to demonstrate an async operation
+
+            return currentDatetime;
+        }
+
+        public async Task<string> ConvertTimeZoneByHourAndDay(string timeString, string dayOfWeekString, string timezoneOffset)
+        {
+            // Parse the time
+            TimeSpan time = TimeSpan.Parse(timeString);
+
+            // Parse the day of the week
+            DayOfWeek targetDayOfWeek = (DayOfWeek)Enum.Parse(typeof(DayOfWeek), dayOfWeekString, true);
+
+            // Parse the timezone offset
+            string offsetString = timezoneOffset.Replace("(", "").Replace("UTC", "").Replace("+", "").Replace(")", "");
+            TimeSpan offset = TimeSpan.Parse(offsetString);
+
+            // Get the current system timezone
+            TimeZoneInfo systemTimeZone = TimeZoneInfo.Local;
+
+            // Get the current system datetime in the system timezone
+            DateTimeOffset currentSystemDateTimeOffset = DateTimeOffset.Now;
+            DateTime currentSystemDateTime = currentSystemDateTimeOffset.DateTime;
+
+            // Get the current day of the week in the system timezone
+            DayOfWeek currentSystemDayOfWeek = currentSystemDateTime.DayOfWeek;
+
+            // Calculate the difference in days between the target day of the week and the current day of the week
+            int differenceInDays = targetDayOfWeek - currentSystemDayOfWeek;
+
+            // Adjust the difference if it's negative (target day is in the previous week)
+            if (differenceInDays < 0)
+            {
+                differenceInDays += 7;
+            }
+
+            // Calculate the adjusted datetime by adding or subtracting the difference in days
+            DateTime adjustedDateTime = currentSystemDateTime.AddDays(differenceInDays);
+
+            // Combine the adjusted datetime with the target time
+            DateTime combinedDateTime = adjustedDateTime.Date.Add(time);
+
+
+
+
+
+            // Create a DateTimeOffset object with the combined datetime and the timezone offset
+            DateTimeOffset targetDateTimeOffset = new DateTimeOffset(combinedDateTime, offset);
+
+            // Convert the DateTimeOffset to the system timezone
+            DateTimeOffset systemDateTimeOffset = TimeZoneInfo.ConvertTime(targetDateTimeOffset, systemTimeZone);
+
+
+            string timeZoneID = ConvertOffsetToTimeZoneID(offset);
+
+            // Find the target time zone by ID
+            TimeZoneInfo targetTimeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneID);
+
+            TimeSpan offsetSystem = systemTimeZone.BaseUtcOffset;
+
+            string output = "";
+            if (offsetSystem == targetTimeZone.BaseUtcOffset)
+            {
+                output = string.Format("{0}, {1:HH:mm}", targetDateTimeOffset.DayOfWeek, targetDateTimeOffset);
+            }
+
+            else
+            {
+                output = string.Format("{0}, {1:HH:mm}", systemDateTimeOffset.DayOfWeek, systemDateTimeOffset);
+            }
+            // Format the resulting DateTime object as a string in the desired format
+
+            await Task.Delay(0); // Optional delay to demonstrate an async operation
+
+            return output;
+        }
+
+        private string GetUrlQuery(string operation, string fromDate, string endDate, string dateField, string additionalQuery, string globalFilter)
+        {
+            if (additionalQuery != "" && additionalQuery != null)
+            {
+                additionalQuery = additionalQuery.TrimStart('^', ' ');
+            }
+
+            string[] operationsArr = { ">=", ">", "BETWEEN", "<", ">=javascript:gs.beginningOfToday()", ">=javascript:gs.beginningOfYesterday()", ">=javascript:gs.beginningOfLast3Months()", ">=javascript:gs.beginningOfLast15Minutes()" };
+
+            string urlQueryValue = "";
+
+            string urlQuery = "";
+
+            string urlQueryKey = "&sysparm_query=";
+
+            bool operationAllowed = operationsArr.Contains(operation);
+            if (operationAllowed)
+            {
+                if (operation == "BETWEEN")
+                {
+                    urlQueryValue = string.Format("{0}BETWEENjavascript:gs.dateGenerate('{1}')" + "@" + "javascript:gs.dateGenerate('{2}')", dateField, fromDate, endDate);
+                }
+                else if (operation.IndexOf(">=javascript:gs.beginningOf") > -1)
+                {
+                    urlQueryValue = string.Format("{0}{1}", dateField, operation);
+                }
+                else
+                {
+                    urlQueryValue = string.Format("{0}{1}javascript:gs.dateGenerate('{2}')", dateField, operation, fromDate);
+                }
+            }
+
+            if (urlQueryValue != "")
+            {
+                urlQuery = urlQueryKey + urlQueryValue;
+            }
+
+            if (additionalQuery != "")
+            {
+                urlQuery += "^" + additionalQuery;
+            }
+            if (globalFilter != "")
+            {
+                urlQuery += "^" + globalFilter.TrimStart('^', ' ');
+            }
+
+            return urlQuery;
+        }
+
+        private async Task<WebRequest> ConnectSnowv4(string url, string Customer, string systemLogin = null, string systemPassword = null)
+        {
+            var system = await _repository.GetOneAsync<Systems>(s => s.CustomerName == Customer);
+            string result = "";
+            WebRequest tRequest;
+
+            string username = systemLogin ?? system.SystemLogin;
+            string password = systemPassword ?? system.SystemLogin;
+            tRequest = WebRequest.Create(url);
+            tRequest.Method = "get";
+            tRequest.ContentType = "application/json";
+            tRequest.Headers.Add("User-Agent", "AtosOneSource");
+            String encoded = System.Convert.ToBase64String(System.Text.Encoding.GetEncoding("ISO-8859-1").GetBytes(username + ":" + password));
+            tRequest.Headers.Add("Authorization", "Basic " + encoded);
+
+            return tRequest;
+        }
+
+        private async Task<WebRequest> ConnectSnowv4(string url, string Customer)
+        {
+            var system = await _repository.GetOneAsync<Systems>(s => s.CustomerName == Customer);
+            string result = "";
+            WebRequest tRequest;
+
+            string username = system.SystemLogin;
+            string password = system.SystemPassword;
+            tRequest = WebRequest.Create(url);
+            tRequest.Method = "get";
+            tRequest.ContentType = "application/json";
+            tRequest.Timeout = 100000;
+            String encoded = System.Convert.ToBase64String(System.Text.Encoding.GetEncoding("ISO-8859-1").GetBytes(username + ":" + password));
+            tRequest.Headers.Add("Authorization", "Basic " + encoded);
+
+            return tRequest;
+        }
+
+        private LinkHeader LinksFromHeader(string linkHeaderStr)
+        {
+            LinkHeader linkHeader = null;
+
+            if (!string.IsNullOrWhiteSpace(linkHeaderStr))
+            {
+                linkHeaderStr = linkHeaderStr.Replace(",<", ",<<");
+                Regex regex = new Regex(",<");
+                string[] linkStrings = regex.Split(linkHeaderStr);
+
+                if (linkStrings != null && linkStrings.Any())
+                {
+                    linkHeader = new LinkHeader();
+
+                    foreach (string linkString in linkStrings)
+                    {
+                        var relMatch = Regex.Match(linkString, "(?<=rel=\").+?(?=\")", RegexOptions.IgnoreCase);
+                        var linkMatch = Regex.Match(linkString, "(?<=<).+?(?=>)", RegexOptions.IgnoreCase);
+
+                        if (relMatch.Success && linkMatch.Success)
+                        {
+                            string rel = relMatch.Value.ToUpper();
+                            string link = linkMatch.Value;
+
+                            switch (rel)
+                            {
+                                case "FIRST":
+                                    linkHeader.FirstLink = link;
+                                    break;
+                                case "PREV":
+                                    linkHeader.PrevLink = link;
+                                    break;
+                                case "NEXT":
+                                    linkHeader.NextLink = link;
+                                    break;
+                                case "LAST":
+                                    linkHeader.LastLink = link;
+                                    break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return linkHeader;
+        }
+
         private async Task<ReloadDataInBatchesResultDto> ReloadDataInBatches(ReloadDataInBatchesDto dto)
         {
             var resultDto = new ReloadDataInBatchesResultDto();
@@ -1576,6 +1815,255 @@ namespace OneSourceTaskScheduler.Services
                 _logger.LogError("Error occured, but processed " + resultDto.UpdateLog + $" SNOW tickets by the task '{dto.TaskName}'.");
 
                 return resultDto;
+            }
+        }
+
+        private async Task<LoadDataFromNextBatchResultDto> LoadDataFromNextBatch(LoadDataFromNextBatchDto dto)
+        {
+            LoadDataFromNextBatchResultDto resultDto = new LoadDataFromNextBatchResultDto { };
+
+            int count = dto.CurrentOffset;
+
+            int currentCount = dto.CurrentOffset;
+
+            string totalCount = "";
+
+            try
+            {
+                int currentIteration = 1;
+                string headers;
+                string last;
+
+                string nextURL = "";
+                string nextLink = "";
+                if (!string.IsNullOrWhiteSpace(dto.NextLink))
+                {
+                    nextLink = dto.NextLink;
+                    count = dto.CurrentOffset;
+                    currentIteration = dto.Iteration + 1;
+
+                }
+
+                if (currentIteration > 100)
+                {
+                    resultDto.Iteration = currentIteration;
+                    resultDto.NextLink = nextURL;
+                    resultDto.CurrentOffset = count;
+
+                    resultDto.Succeeded = true;
+
+                    return resultDto;
+                }
+
+                if (!string.IsNullOrWhiteSpace(nextLink))
+                {
+                    var task = await _repository.GetOneAsync<Tasks>(x => x.taskName == dto.TaskName);
+
+                    var customer = await _repository.GetOneAsync<Customers>(x => x.CustomerName == dto.Customer);
+
+                    var system = await _repository.GetOneAsync<Systems>(s => s.CustomerName == task.CustomerName && s.System == task.SystemType && s.SystemType == task.EnvironmentNames);
+
+                    string systemLogin;
+                    string systemPassword;
+
+                    if (system.SystemLogin == task.Credential)
+                    {
+                        systemLogin = task.Credential;
+                        systemPassword = system.SystemPassword;
+                    }
+                    else
+                    {
+                        var systemCreds = await _repository.GetOneAsync<SystemCredentials>(x => x.SystemLogin == task.Credential);
+
+                        systemLogin = systemCreds.SystemLogin;
+                        systemPassword = systemCreds.SystemPassword;
+                    }
+
+                    var request = await ConnectSnowv4(nextLink, dto.Customer, systemLogin, systemPassword);
+
+                    HttpWebResponse response;
+
+                    try
+                    {
+                        response = (HttpWebResponse)request.GetResponse();
+                    }
+                    catch (WebException ex)
+                    {
+                        _logger.LogError(ex, ex.ToString());
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, ex.ToString());
+                        throw;
+                    }
+
+                    string sResponseFromServer;
+
+                    using (Stream stream = response.GetResponseStream())
+                    {
+                        using (StreamReader reader = new StreamReader(stream))
+                        {
+                            sResponseFromServer = reader.ReadToEnd();
+                        }
+                    }
+
+                    headers = response.GetResponseHeader("Link");
+                    totalCount = response.GetResponseHeader("X-Total-Count");
+                    var link = LinksFromHeader(headers);
+                    if (headers == "")
+                    {
+                        nextURL = null;
+                    }
+                    else
+                    {
+                        nextURL = link.NextLink;
+                        last = link.LastLink;
+                    }
+
+                    var responseJson = JObject.Parse(sResponseFromServer);
+
+                    count += responseJson["result"].Count();
+
+                    resultDto.Iteration = currentIteration;
+                    resultDto.NextLink = nextURL;
+                    resultDto.UpdateLog = count.ToString() + "/" + totalCount;
+                    resultDto.CurrentOffset = count;
+
+                    string snowResponsestr = JsonConvert.SerializeObject(responseJson["result"]);
+
+                    var tableConfigEntity = await _repository.GetOneAsync<SNOWApiTableConfiguration>(x => x.TechnicalTableName == dto.SourceTableName && x.SqlTableName == dto.SelectedDestTable);
+
+                    bool succeded = await UpdateDB(tableConfigEntity.TableNameVariable, snowResponsestr, task, customer);
+
+                    if (succeded)
+                        currentCount += count;
+
+                    resultDto.Succeeded = succeded;
+
+                    if (resultDto.Succeeded)
+                        _logger.LogInformation("Processed " + resultDto.UpdateLog + $" SNOW tickets by the task '{dto.TaskName}'.");
+                    else
+                        _logger.LogError("Tried to process " + resultDto.UpdateLog + $" SNOW tickets by the task '{dto.TaskName}', but an error occured during the operation.");
+
+                    return resultDto;
+                }
+                else
+                {
+                    resultDto.Iteration = currentIteration;
+                    resultDto.NextLink = nextURL;
+                    resultDto.CurrentOffset = count;
+
+                    resultDto.Succeeded = true;
+
+                    return resultDto;
+                }
+            }
+            catch (Exception ex)
+            {
+                int totalCountInt = 0;
+
+                if (!string.IsNullOrEmpty(totalCount))
+                {
+                    totalCountInt = int.Parse(totalCount);
+                }
+
+                resultDto.UpdateLog = currentCount + "/" + totalCountInt;
+                resultDto.CurrentOffset = currentCount;
+                resultDto.Succeeded = false;
+                resultDto.ExceptionMessage = ex.Message;
+                resultDto.StackTrace = ex.StackTrace;
+
+                _logger.LogError(ex, ex.Message);
+
+                _logger.LogError("Error occured, bu processed " + resultDto.UpdateLog + $" SNOW tickets by the task '{dto.TaskName}'.");
+
+                return resultDto;
+            }
+        }
+
+        private async Task<bool> UpdateDB(string oneSourceTable, string snowData, Tasks task = null, Customers customer = null)
+        {
+            HttpClient httpClient = new HttpClient();
+
+            string snowLogin;
+            string snowPassword;
+
+            if (task != null)
+            {
+                snowLogin = task.OneSourceLogin;
+                if (task.DestinationServiceOption == "localInstance")
+                    snowPassword = SecurityUtils.HashString(task.OneSourcePassword);
+                else
+                    snowPassword = task.OneSourcePassword;
+            }
+            else
+            {
+                snowLogin = "OneSourceSyncService";
+                var user = await _repository.GetOneAsync<OneSourceUser>(x => x.Login == snowLogin);
+                snowPassword = user.Password;
+            }
+
+            string destinationUrl = null;
+
+            if (task != null && customer != null)
+            {
+                if (task.DestinationServiceOption == "localInstance")
+                {
+                    destinationUrl = _configuration["DomainUri"] + "/api/snow";
+                }
+                else if (task.DestinationServiceOption == "externalInstance")
+                {
+                    destinationUrl = customer.OneSourceURL + task.ServiceAPIEndpoint;
+                }
+                else if (task.DestinationServiceOption == "otherInstance")
+                {
+                    destinationUrl = task.CustomServiceUrl + task.ServiceAPIEndpoint;
+                }
+            }
+            else
+            {
+                destinationUrl = _configuration["DomainUri"] + "/api/snow";
+            }
+
+            string credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes(snowLogin + ":" + snowPassword));
+
+            if (task.DestinationServiceOption == "localInstance")
+            {
+                var json = JsonConvert.SerializeObject(new { table = oneSourceTable, data = snowData });
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
+
+                var response = await httpClient.PostAsync(destinationUrl, content);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError("Request to the URL '" + destinationUrl + "' ended with " + response.StatusCode + " status code");
+                }
+
+                return response.StatusCode == HttpStatusCode.OK;
+            }
+            else
+            {
+                NameValueCollection payload = new NameValueCollection();
+                payload.Add("table", oneSourceTable);
+                payload.Add("data", snowData);
+                try
+                {
+                    using (WebClient client = new WebClient())
+                    {
+                        client.Headers.Add("Authorization", "Basic " + credentials);
+                        var response = client.UploadValues(destinationUrl, payload);
+
+                        return true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Response error returned from the external service endpoint: " + destinationUrl);
+                    return false;
+                }
             }
         }
     }

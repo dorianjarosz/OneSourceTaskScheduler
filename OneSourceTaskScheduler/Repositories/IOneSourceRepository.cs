@@ -34,7 +34,7 @@ namespace OneSourceTaskScheduler.Repositories
 
         Task<int> AddManyAsync<TEntity>(IEnumerable<TEntity> entities) where TEntity : class;
 
-        Task<IQueryable<TEntity>> GetQuery<TEntity>() where TEntity : class;
+        Task<IQueryable<TEntity>> GetQueryAsync<TEntity>() where TEntity : class;
 
         Task<int> ExecuteSqlRawAsync(string sql);
     }
