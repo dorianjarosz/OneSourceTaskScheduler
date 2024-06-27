@@ -10,93 +10,93 @@ namespace OneSourceTaskScheduler.Data.Entities
 
 
         [Column(TypeName = "nvarchar(100)")]
-        public string taskName { get; set; }
+        public string? taskName { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string CustomerName { get; set; }
-
-
-        [Column(TypeName = "nvarchar(100)")]
-        public string APIName { get; set; }
-
-        [Column(TypeName = "nvarchar(100)")]
-        public string Credential { get; set; }
+        public string? CustomerName { get; set; }
 
 
         [Column(TypeName = "nvarchar(100)")]
-        public string SystemType { get; set; }
+        public string? APIName { get; set; }
+
+        [Column(TypeName = "nvarchar(100)")]
+        public string? Credential { get; set; }
 
 
         [Column(TypeName = "nvarchar(100)")]
-        public string EnvironmentNames { get; set; }
+        public string? SystemType { get; set; }
 
 
         [Column(TypeName = "nvarchar(100)")]
-        public string SourceTable { get; set; }
+        public string? EnvironmentNames { get; set; }
 
 
         [Column(TypeName = "nvarchar(100)")]
-        public string DestinationTable { get; set; }
+        public string? SourceTable { get; set; }
 
 
         [Column(TypeName = "nvarchar(100)")]
-        public string FilterName { get; set; }
+        public string? DestinationTable { get; set; }
+
+
+        [Column(TypeName = "nvarchar(100)")]
+        public string? FilterName { get; set; }
 
 
         [Column(TypeName = "nvarchar(MAX)")]
-        public string FieldsList { get; set; }
+        public string? FieldsList { get; set; }
 
         [Column(TypeName = "nvarchar(MAX)")]
-        public string fromDate { get; set; }
+        public string? fromDate { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string endDate { get; set; }
+        public string? endDate { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string DatesList { get; set; }
+        public string? DatesList { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string DateOperation { get; set; }
+        public string? DateOperation { get; set; }
 
         [Column(TypeName = "int")]
         public int? BatchSize { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string additionalQuery { get; set; }
+        public string? additionalQuery { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string FavouriteQuery { get; set; }
+        public string? FavouriteQuery { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string FolderID { get; set; }
+        public string? FolderID { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string ClientID { get; set; }
+        public string? ClientID { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string Param { get; set; }
+        public string? Param { get; set; }
 
         [Column(TypeName = "int")]
         public int? TimeRange { get; set; }
 
         [Column(TypeName = "nvarchar(20)")]
-        public string TimeRangeType { get; set; }
+        public string? TimeRangeType { get; set; }
 
         [Column(TypeName = "nvarchar(250)")]
-        public string TimeZone { get; set; }
+        public string? TimeZone { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string QueryDomain { get; set; }
+        public string? QueryDomain { get; set; }
         [Column(TypeName = "nvarchar(200)")]
-        public string DestinationServiceOption { get; set; }
+        public string? DestinationServiceOption { get; set; }
         [Column(TypeName = "nvarchar(200)")]
-        public string CustomServiceUrl { get; set; }
+        public string? CustomServiceUrl { get; set; }
         [Column(TypeName = "nvarchar(200)")]
-        public string ServiceAPIEndpoint { get; set; }
+        public string? ServiceAPIEndpoint { get; set; }
         [Column(TypeName = "nvarchar(100)")]
-        public string OneSourceLogin { get; set; }
+        public string? OneSourceLogin { get; set; }
         [Column(TypeName = "nvarchar(100)")]
-        public string OneSourcePassword { get; set; }
+        public string? OneSourcePassword { get; set; }
         [Column("lastUpdate", TypeName = "datetime2")]
         public DateTime? LastUpdate { get; set; }
 

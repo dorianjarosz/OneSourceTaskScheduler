@@ -7,6 +7,11 @@ using OneSourceTaskScheduler.Services;
 IHost host = Host.CreateDefaultBuilder(args)
     .ConfigureServices((context, services) =>
     {
+        services.Configure<HostOptions>(hostOptions =>
+        {
+            hostOptions.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
+        });
+
         services.AddDbContextFactory<OneSourceContext>(options =>
                     options.UseSqlServer(context.Configuration.GetConnectionString("OneSourceContextConnection")));
 
@@ -14,6 +19,11 @@ IHost host = Host.CreateDefaultBuilder(args)
         services.AddSingleton<ITaskSchedulerService, TaskSchedulerService>();
 
         services.AddHostedService<TaskSchedulerWorker>();
+
+        services.AddWindowsService(options =>
+        {
+            options.ServiceName = "One Source Task Scheduler";
+        });
     })
     .UseWindowsService()
     .Build();

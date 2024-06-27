@@ -10,12 +10,12 @@ namespace OneSourceTaskScheduler.Data.Entities
         public int Id { get; set; }
 
         [Column("taskTitle")]
-        public string taskTitle { get; set; }
+        public string? taskTitle { get; set; }
         [Column("application")]
-        public string application { get; set; }
+        public string? application { get; set; }
 
         [Column("customer")]
-        public string customer { get; set; }
+        public string? customer { get; set; }
 
         [Column("startTime", TypeName = "datetime")]
         public DateTime? startTime { get; set; }
@@ -24,21 +24,21 @@ namespace OneSourceTaskScheduler.Data.Entities
         public DateTime? endTime { get; set; }
 
         [Column("message")]
-        public string message { get; set; }
+        public string? message { get; set; }
 
         [Column("processedTicketsCount")]
-        public string ProcessedTicketsCount { get; set; }
+        public string? ProcessedTicketsCount { get; set; }
 
         [Column("status")]
-        public string status { get; set; }
+        public string? status { get; set; }
 
         [Column("lastUpdate", TypeName = "datetime")]
         public DateTime? LastUpdate { get; set; }
 
         [Column("exceptionMessage")]
-        public string ExceptionMessage { get; set; }
+        public string? ExceptionMessage { get; set; }
 
         [Column("stackTrace")]
-        public string StackTrace { get; set; }
+        public string? StackTrace { get; set; }
     }
 }

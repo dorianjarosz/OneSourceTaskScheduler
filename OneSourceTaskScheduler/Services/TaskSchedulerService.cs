@@ -36,19 +36,27 @@ namespace OneSourceTaskScheduler.Services
             {
                 try
                 {
-                    var activeScheduledTasks = await _repository.GetAsync<Schedules>(x => x.Active == true);
+                    _logger.LogInformation("Starting executing scheduled tasks.");
 
+                    var activeScheduledTasks = await _repository.GetAsync<Schedules>(x => x.Active == true);
 
                     foreach (var activeTask in activeScheduledTasks)
                     {
-                        var start = await (await _repository.GetQueryAsync<Schedules>())
-                            .Where(r => r.taskName == activeTask.taskName)
-                            .Select(r => r.Start).FirstOrDefaultAsync();
+                        string start;
 
-                        var scheduleLog = await (await _repository.GetQueryAsync<Logs>())
-                            .OrderByDescending(x => x.startTime)
-                            .Where(x => x.taskTitle == activeTask.taskName)
-                            .FirstOrDefaultAsync();
+                        Logs scheduleLog;
+
+                        using (var context = await _repository.CreateDbContextAsync())
+                        {
+                            start = await (await _repository.GetQueryAsync<Schedules>(context))
+                                .Where(r => r.taskName == activeTask.taskName)
+                                .Select(r => r.Start).FirstOrDefaultAsync();
+
+                            scheduleLog = await (await _repository.GetQueryAsync<Logs>(context))
+                                .OrderByDescending(x => x.startTime)
+                                .Where(x => x.taskTitle == activeTask.taskName)
+                                .FirstOrDefaultAsync();
+                        }
 
                         int checkStart;
                         Schedules currentTask;
@@ -96,6 +104,10 @@ namespace OneSourceTaskScheduler.Services
                     _logger.LogError(ex, ex.ToString());
                 }
 
+                _logger.LogInformation("Ended executing scheduled tasks.");
+
+                _logger.LogInformation("Waiting the next minute to execute scheduled tasks further.");
+
                 await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
             }
         }
@@ -114,31 +126,37 @@ namespace OneSourceTaskScheduler.Services
             {
                 if (activeTask.Source != "SQL Script")
                 {
-                    result = await (await _repository.GetQueryAsync<Tasks>())
+                    using (var context = await _repository.CreateDbContextAsync())
+                    {
+                        result = await (await _repository.GetQueryAsync<Tasks>(context))
                .Join(
-                  (await _repository.GetQueryAsync<Schedules>()).Where(s => s.taskName == activeTask.taskName),
+                  (await _repository.GetQueryAsync<Schedules>(context)).Where(s => s.taskName == activeTask.taskName),
                    t1 => t1.taskName,
                    t2 => t2.taskName,
                    (t1, t2) => new { Table1 = t1, Table2 = t2 })
                .Select(t => new { t.Table1.taskName, t.Table1.SystemType, t.Table2.Start, t.Table2.Recurrence, t.Table2.End })
                .FirstOrDefaultAsync();
-
+                    }
                 }
+
                 if (activeTask.Source == "SQL Script")
                 {
-                    result = await (await _repository.GetQueryAsync<Tasks>())
+                    using (var context = await _repository.CreateDbContextAsync())
+                    {
+                        result = await (await _repository.GetQueryAsync<Tasks>(context))
                     .Join(
-                        (await _repository.GetQueryAsync<Schedules>()).Where(s => s.taskName == activeTask.taskName),
+                        (await _repository.GetQueryAsync<Schedules>(context)).Where(s => s.taskName == activeTask.taskName),
                         t1 => t1.taskName,
                         t2 => t2.taskName,
                         (t1, t2) => new { Table1 = t1, Table2 = t2 })
                     .Join(
-                        (await _repository.GetQueryAsync<Scripts>()),
+                        (await _repository.GetQueryAsync<Scripts>(context)),
                         t => t.Table1.taskName,
                         t3 => t3.TaskName,
                         (t, t3) => new { t.Table1, t.Table2, Table3 = t3 })
                     .Select(t => new { t.Table1.taskName, t.Table1.SystemType, t.Table2.Start, t.Table3.Script, t.Table2.Recurrence, t.Table2.End })
                     .FirstOrDefaultAsync();
+                    }
                 }
             }
 
@@ -851,7 +869,8 @@ namespace OneSourceTaskScheduler.Services
                             {
                                 var ScheduleInfo = await _repository.GetOneAsync<Schedules>(s => s.taskName == taskName);
                                 ScheduleInfo.Active = false;
-                                _repository.UpdateAsync(ScheduleInfo);
+
+                                await _repository.UpdateAsync(ScheduleInfo);
                             }
                         }
                         else if (end == "Never" && end != "")
@@ -874,23 +893,16 @@ namespace OneSourceTaskScheduler.Services
                             }
                         }
                     }
-                    else
-                    {
-
-                    }
-                }
-                else
-                {
-
                 }
 
             }
 
             else if (end != "Never" && end != "" && parsedTime.TimeOfDay < currentDateTimeWithoutSeconds.TimeOfDay)
             {
-                var ScheduleInfo = await Context.Schedules.FirstOrDefaultAsync(s => s.taskName == taskName);
-                ScheduleInfo.Active = false;
-                Context.SaveChanges();
+                var scheduleInfo = await _repository.GetOneAsync<Schedules>(s => s.taskName == taskName);
+                scheduleInfo.Active = false;
+
+                await _repository.UpdateAsync(scheduleInfo);
             }
 
         }
@@ -898,7 +910,6 @@ namespace OneSourceTaskScheduler.Services
         private async Task RunTaskEveryMonth(string taskName, string system, string end, string start, string timezone, DateTime startedTaskDateTime)
         {
             string[] dates = start.Split(",");
-
 
             int dayOfMonth = int.Parse(dates[0]);
             string convertedDateTime = await ConvertTimeByDayOfMonth(dayOfMonth, dates[1], timezone);
@@ -946,12 +957,12 @@ namespace OneSourceTaskScheduler.Services
                         }
                         else
                         {
-                            var schedule = await dbContext.Schedules.Where(s => s.taskName == taskName).ToListAsync();
-                            foreach (var item in schedule)
+                            var schedules = await _repository.GetAsync<Schedules>(s => s.taskName == taskName);
+                            foreach (var item in schedules)
                             {
                                 item.Active = false;
                             }
-                            await dbContext.SaveChangesAsync();
+                            await _repository.UpdateRangeAsync(schedules);
                         }
                     }
                     else if (end == "Never" && end != "")
@@ -974,36 +985,27 @@ namespace OneSourceTaskScheduler.Services
                         }
                     }
                 }
-                else
-                {
-
-                }
             }
-
             else if (end != "Never" && end != "" && parsedTime.TimeOfDay < currentDateTimeWithoutSeconds.TimeOfDay)
             {
-                var ScheduleInfo = await Context.Schedules.FirstOrDefaultAsync(s => s.taskName == taskName);
-                ScheduleInfo.Active = false;
-                Context.SaveChanges();
+                var scheduleInfo = await _repository.GetOneAsync<Schedules>(s => s.taskName == taskName);
+                scheduleInfo.Active = false;
+                await _repository.UpdateAsync(scheduleInfo);
             }
 
         }
 
         private async Task RunTaskEveryMinute(string taskName, string system, string end, string start, string timezone, DateTime startedTaskDateTime)
         {
-            DateTime TaskEndDate = DateTime.Now;
+            DateTime taskEndDate = DateTime.Now;
             if (end != "Never" && end != "")
             {
-                TaskEndDate = await ConvertEndTimeZone(end, timezone);
+                taskEndDate = await ConvertEndTimeZone(end, timezone);
             }
 
-
-
-
-            string TaskEndDateformat = "yyyy-MM-dd HH:mm";
             if (end != "Never" && end != "")
             {
-                if (TaskEndDate >= DateTime.Now)
+                if (taskEndDate >= DateTime.Now)
                 {
                     if (system == "BoldChat")
                     {
@@ -1024,12 +1026,13 @@ namespace OneSourceTaskScheduler.Services
                 }
                 else
                 {
-                    var schedule = await dbContext.Schedules.Where(s => s.taskName == taskName).ToListAsync();
-                    foreach (var item in schedule)
+                    var schedules = await _repository.GetAsync<Schedules>(s => s.taskName == taskName);
+
+                    foreach (var item in schedules)
                     {
                         item.Active = false;
                     }
-                    await dbContext.SaveChangesAsync();
+                    await _repository.UpdateRangeAsync(schedules);
                 }
             }
             else if (end == "Never" && end != "")
@@ -1055,19 +1058,15 @@ namespace OneSourceTaskScheduler.Services
 
         private async Task RunTaskEveryHour(string taskName, string system, string end, string start, string timezone, DateTime startedTaskDateTime)
         {
-            DateTime TaskEndDate = DateTime.Now;
+            DateTime taskEndDate = DateTime.Now;
             if (end != "Never" && end != "")
             {
-                TaskEndDate = await ConvertEndTimeZone(end, timezone);
+                taskEndDate = await ConvertEndTimeZone(end, timezone);
             }
-            else
-            {
 
-            }
-            string TaskEndDateformat = "yyyy-MM-dd HH:mm";
             if (end != "Never" && end != "")
             {
-                if (TaskEndDate >= DateTime.Now)
+                if (taskEndDate >= DateTime.Now)
                 {
                     if (system == "BoldChat")
                     {
@@ -1089,12 +1088,12 @@ namespace OneSourceTaskScheduler.Services
                 }
                 else
                 {
-                    var schedule = await dbContext.Schedules.Where(s => s.taskName == taskName).ToListAsync();
-                    foreach (var item in schedule)
+                    var schedules = await _repository.GetAsync<Schedules>(s => s.taskName == taskName);
+                    foreach (var item in schedules)
                     {
                         item.Active = false;
                     }
-                    await dbContext.SaveChangesAsync();
+                    await _repository.UpdateRangeAsync(schedules);
                 }
             }
             else if (end == "Never" && end != "")
@@ -1120,21 +1119,22 @@ namespace OneSourceTaskScheduler.Services
         }
         private async Task RunTaskOnDemand(string taskName, DateTime startedTaskDateTime)
         {
-            var TaskInfo = await dbContext.Tasks.Where(t => t.taskName == taskName).FirstOrDefaultAsync();
-            if (TaskInfo.SystemType == "BoldChat")
+            var taskInfo = await _repository.GetOneAsync<Tasks>(t => t.taskName == taskName);
+
+            if (taskInfo.SystemType == "BoldChat")
             {
                 await RunBoldTasks(taskName, startedTaskDateTime);
             }
-            else if (TaskInfo.SystemType == "Nice")
+            else if (taskInfo.SystemType == "Nice")
             {
                 await RunNiceTasks(taskName, startedTaskDateTime);
             }
-            else if (TaskInfo.SystemType == "ServiceNow")
+            else if (taskInfo.SystemType == "ServiceNow")
             {
                 await RunSnowTasks(taskName, startedTaskDateTime);
 
             }
-            else if (TaskInfo.SystemType == "SQL Script")
+            else if (taskInfo.SystemType == "SQL Script")
             {
                 await RunScriptTasks(taskName, startedTaskDateTime);
             }
@@ -1142,7 +1142,7 @@ namespace OneSourceTaskScheduler.Services
 
         private async Task<DateTime> TaskStartLog(string taskName)
         {
-            var task = await dbContext.Tasks.Where(t => t.taskName == taskName).FirstOrDefaultAsync();
+            var task = await _repository.GetOneAsync<Tasks>(t => t.taskName == taskName);
             DateTime now = DateTime.Now;
             var log = new Logs
             {
@@ -1155,15 +1155,14 @@ namespace OneSourceTaskScheduler.Services
                 status = "Task is started.",
                 LastUpdate = DateTime.Now
             };
-            dbContext.Logs.Add(log);
-            await dbContext.SaveChangesAsync();
+            await _repository.AddAsync<Logs>(log);
 
             return now;
         }
 
         private async Task LogsUpdate(string taskName, DateTime startedTask, bool succeeded = true, string exceptionMessage = null, string stackTrace = null, string processedTasksCount = null)
         {
-            var log = await dbContext.Logs.Where(l => l.taskTitle == taskName && l.startTime == startedTask).FirstOrDefaultAsync();
+            var log = await _repository.GetOneAsync<Logs>(l => l.taskTitle == taskName && l.startTime == startedTask);
             log.endTime = DateTime.Now;
             log.status = $"Task is completed{(succeeded ? "" : " with an error")}.";
             log.message = $"Task is completed{(succeeded ? "" : " with an error")}.";
@@ -1173,7 +1172,7 @@ namespace OneSourceTaskScheduler.Services
             log.ExceptionMessage = exceptionMessage;
             log.StackTrace = stackTrace;
 
-            await dbContext.SaveChangesAsync();
+            await _repository.UpdateAsync(log);
         }
 
         private async Task<DateTime> ConvertTimeZone(string taskDate, string timezone)
@@ -1410,6 +1409,62 @@ namespace OneSourceTaskScheduler.Services
             {
                 output = string.Format("{0}, {1:HH:mm}", systemDateTimeOffset.DayOfWeek, systemDateTimeOffset);
             }
+            // Format the resulting DateTime object as a string in the desired format
+
+            await Task.Delay(0); // Optional delay to demonstrate an async operation
+
+            return output;
+        }
+
+        public async Task<string> ConvertTimeByDayOfMonth(int dayOfMonth, string timeString, string timezoneOffset)
+        {
+            // Parse the time
+            TimeSpan time = TimeSpan.Parse(timeString);
+
+            // Get the current system timezone
+            TimeZoneInfo systemTimeZone = TimeZoneInfo.Local;
+
+            // Get the current system datetime in the system timezone
+            DateTimeOffset currentSystemDateTimeOffset = DateTimeOffset.Now;
+            DateTime currentSystemDateTime = currentSystemDateTimeOffset.DateTime;
+
+            // Get the current month and year
+            int currentMonth = currentSystemDateTime.Month;
+            int currentYear = currentSystemDateTime.Year;
+
+            // Calculate the target datetime based on the given day of the month and time
+            DateTime targetDateTime = new DateTime(currentYear, currentMonth, dayOfMonth, time.Hours, time.Minutes, time.Seconds);
+
+            // Parse the timezone offset
+            string offsetString = timezoneOffset.Replace("(", "").Replace("UTC", "").Replace("+", "").Replace(")", "");
+            TimeSpan offset = TimeSpan.Parse(offsetString);
+
+            // Create a DateTimeOffset object with the target datetime and the timezone offset
+            DateTimeOffset targetDateTimeOffset = new DateTimeOffset(targetDateTime, offset);
+
+            // Convert the target DateTimeOffset to the system timezone
+            DateTimeOffset systemDateTimeOffset = TimeZoneInfo.ConvertTime(targetDateTimeOffset, systemTimeZone);
+
+
+
+            string timeZoneID = ConvertOffsetToTimeZoneID(offset);
+
+            // Find the target time zone by ID
+            TimeZoneInfo targetTimeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneID);
+
+            TimeSpan offsetSystem = systemTimeZone.BaseUtcOffset;
+
+            string output = "";
+            if (offsetSystem == targetTimeZone.BaseUtcOffset)
+            {
+                output = string.Format("{0},{1:HH:mm}", systemDateTimeOffset.Day, targetDateTimeOffset);
+            }
+
+            else
+            {
+                output = string.Format("{0},{1:HH:mm}", systemDateTimeOffset.Day, systemDateTimeOffset);
+            }
+
             // Format the resulting DateTime object as a string in the desired format
 
             await Task.Delay(0); // Optional delay to demonstrate an async operation

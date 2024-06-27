@@ -10,31 +10,31 @@ namespace OneSourceTaskScheduler.Data.Entities
 
 
         [Column(TypeName = "nvarchar(100)")]
-        public string CustomerName { get; set; }
+        public string? CustomerName { get; set; }
 
 
         [Column(TypeName = "nvarchar(100)")]
-        public string System { get; set; }
+        public string? System { get; set; }
 
 
         [Column(TypeName = "nvarchar(100)")]
-        public string SystemType { get; set; }
+        public string? SystemType { get; set; }
 
 
         [Column(TypeName = "nvarchar(100)")]
-        public string ApiName { get; set; }
+        public string? ApiName { get; set; }
 
 
         [Column(TypeName = "nvarchar(100)")]
-        public string ClientId { get; set; }
+        public string? ClientId { get; set; }
 
 
         [Column(TypeName = "nvarchar(100)")]
-        public string FolderId { get; set; }
+        public string? FolderId { get; set; }
 
 
         [Column(TypeName = "nvarchar(100)")]
-        public string EndPointPath { get; set; }
+        public string? EndPointPath { get; set; }
 
         public DateTime? LastUpdate { get; set; }
 

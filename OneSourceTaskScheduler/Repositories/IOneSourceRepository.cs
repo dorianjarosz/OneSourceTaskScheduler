@@ -1,9 +1,12 @@
-﻿using System.Linq.Expressions;
+﻿using OneSourceTaskScheduler.Data;
+using System.Linq.Expressions;
 
 namespace OneSourceTaskScheduler.Repositories
 {
     public interface IOneSourceRepository
     {
+        Task<OneSourceContext> CreateDbContextAsync();
+
         Task MigrateDatabaseAsync();
 
         Task<int> UpdateAsync<TEntity>(TEntity entity) where TEntity : class;
@@ -34,7 +37,7 @@ namespace OneSourceTaskScheduler.Repositories
 
         Task<int> AddManyAsync<TEntity>(IEnumerable<TEntity> entities) where TEntity : class;
 
-        Task<IQueryable<TEntity>> GetQueryAsync<TEntity>() where TEntity : class;
+        Task<IQueryable<TEntity>> GetQueryAsync<TEntity>(OneSourceContext dbContext) where TEntity : class;
 
         Task<int> ExecuteSqlRawAsync(string sql);
     }

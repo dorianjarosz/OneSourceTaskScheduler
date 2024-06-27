@@ -10,10 +10,10 @@ namespace OneSource.Data.Entities
         public int Id { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string CustomerName { get; set; }
+        public string? CustomerName { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string OneSourceURL { get; set; }
+        public string? OneSourceURL { get; set; }
 
         [Column("lastUpdate", TypeName = "datetime2")]
         public DateTime? LastUpdate { get; set; }

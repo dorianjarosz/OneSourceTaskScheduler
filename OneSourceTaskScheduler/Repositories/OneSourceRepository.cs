@@ -13,6 +13,11 @@ namespace OneSourceTaskScheduler.Repositories
             _contextFactory = contextFactory;
         }
 
+        public async Task<OneSourceContext> CreateDbContextAsync()
+        {
+            return await _contextFactory.CreateDbContextAsync();
+        }
+
         public async Task MigrateDatabaseAsync()
         {
             using var context = await _contextFactory.CreateDbContextAsync();
@@ -73,11 +78,9 @@ namespace OneSourceTaskScheduler.Repositories
             return await context.Set<TEntity>().Include(include).ToListAsync();
         }
 
-        public async Task<IQueryable<TEntity>> GetQueryAsync<TEntity>() where TEntity : class
+        public async Task<IQueryable<TEntity>> GetQueryAsync<TEntity>(OneSourceContext dbContext) where TEntity : class
         {
-            using var context = await _contextFactory.CreateDbContextAsync();
-
-            return context.Set<TEntity>().AsQueryable();
+            return dbContext.Set<TEntity>().AsQueryable();
         }
 
         public async Task<IReadOnlyList<TEntity>> GetAllOrderedAsync<TEntity, TProperty>(Expression<Func<TEntity, TProperty>> orderBy) where TEntity : class
