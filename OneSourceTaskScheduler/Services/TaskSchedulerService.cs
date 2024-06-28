@@ -117,7 +117,6 @@ namespace OneSourceTaskScheduler.Services
             var taskdata = await _repository.GetOneAsync<Tasks>(task => task.taskName == activeTask.taskName);
             dynamic result = "";
 
-
             if (activeTask == null)
             {
                 Console.WriteLine("Schedule table id null!");

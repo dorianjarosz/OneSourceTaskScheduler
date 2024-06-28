@@ -8,13 +8,13 @@ namespace OneSourceTaskScheduler.Data.Entities
         [Column("id")]
         public int Id { get; set; }
 
-        public string TableNameVariable { get; set; }
+        public string? TableNameVariable { get; set; }
 
-        public string SqlTableName { get; set; }
+        public string? SqlTableName { get; set; }
 
-        public string TechnicalTableName { get; set; }
+        public string? TechnicalTableName { get; set; }
 
-        public string TableNameLabel { get; set; }
+        public string? TableNameLabel { get; set; }
 
         public bool Param { get; set; }
 

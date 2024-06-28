@@ -8,11 +8,11 @@ namespace OneSourceTaskScheduler.Data.Entities
         [Column("id")]
         public int Id { get; set; }
 
-        public string ColumnVariableName { get; set; }
+        public string? ColumnVariableName { get; set; }
 
-        public string SqlColumnName { get; set; }
+        public string? SqlColumnName { get; set; }
 
-        public string SqlColumnDataType { get; set; }
+        public string? SqlColumnDataType { get; set; }
 
         public int SnowTableConfigurationId { get; set; }
 

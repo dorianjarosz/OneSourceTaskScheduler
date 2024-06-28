@@ -9,30 +9,30 @@ namespace OneSourceTaskScheduler.Data.Entities
         public int Id { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string CustomerName { get; set; }
+        public string? CustomerName { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string System { get; set; }
+        public string? System { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string SystemType { get; set; }
+        public string? SystemType { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string RootURL { get; set; }
-
-
-        [Column(TypeName = "nvarchar(100)")]
-        public string SystemLogin { get; set; }
+        public string? RootURL { get; set; }
 
 
         [Column(TypeName = "nvarchar(100)")]
-        public string SystemPassword { get; set; }
+        public string? SystemLogin { get; set; }
+
 
         [Column(TypeName = "nvarchar(100)")]
-        public string OneSourceLogin { get; set; }
+        public string? SystemPassword { get; set; }
 
         [Column(TypeName = "nvarchar(100)")]
-        public string OneSourcePassword { get; set; }
+        public string? OneSourceLogin { get; set; }
+
+        [Column(TypeName = "nvarchar(100)")]
+        public string? OneSourcePassword { get; set; }
 
         public DateTime? LastUpdate { get; set; }
 

@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using OneSource.Data.Entities;
 using OneSourceTaskScheduler.Data.Entities;
 
 namespace OneSourceTaskScheduler.Data
@@ -10,9 +11,13 @@ namespace OneSourceTaskScheduler.Data
         {
         }
 
+        public DbSet<Api> Apis { get; set; }
+
         public DbSet<Schedules> Schedules { get; set; }
 
         public DbSet<Systems> Systems { get; set; }
+
+        public DbSet<Customers> Customers { get; set; }
 
         public DbSet<Tasks> Tasks { get; set; }
 
@@ -32,9 +37,19 @@ namespace OneSourceTaskScheduler.Data
 
         public DbSet<SnowApiFilter> SnowApiFilters { get; set; }
 
+        public DbSet<OneSourceUser> Users { get; set; }
+
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
+
+            builder.Entity<SNOWApiTableConfiguration>()
+                .Property(b => b.LastUpdate)
+                .HasDefaultValueSql("getdate()");
+
+            builder.Entity<SNOWApiColumnConfiguration>()
+               .Property(b => b.LastUpdate)
+               .HasDefaultValueSql("getdate()");
         }
     }
 }

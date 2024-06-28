@@ -8,14 +8,14 @@ namespace OneSourceTaskScheduler.Data.Entities
         [Column("id")]
         public int Id { get; set; }
 
-        public string SnowTableTechnical { get; set; }
+        public string? SnowTableTechnical { get; set; }
 
-        public string SnowTableLabel { get; set; }
+        public string? SnowTableLabel { get; set; }
 
-        public string FilterName { get; set; }
+        public string? FilterName { get; set; }
 
-        public string Query { get; set; }
-        public string CustomerName { get; set; }
+        public string? Query { get; set; }
+        public string? CustomerName { get; set; }
 
         public bool FilterFlag { get; set; }
 

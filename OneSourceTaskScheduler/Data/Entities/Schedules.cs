@@ -11,19 +11,19 @@ namespace OneSourceTaskScheduler.Data.Entities
 
         [Column("taskName")]
 
-        public string taskName { get; set; }
+        public string? taskName { get; set; }
 
 
         [Column("Source")]
-        public string Source { get; set; }
+        public string? Source { get; set; }
 
         [Column("Start")]
-        public string Start { get; set; }
+        public string? Start { get; set; }
 
         [Column("Recurrence")]
-        public string Recurrence { get; set; }
+        public string? Recurrence { get; set; }
         [Column("End")]
-        public string End { get; set; }
+        public string? End { get; set; }
         [Column("Active")]
         public bool? Active { get; set; }
         [Column("LastUpdate")]

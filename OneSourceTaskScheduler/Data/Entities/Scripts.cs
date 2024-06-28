@@ -6,8 +6,8 @@ namespace OneSourceTaskScheduler.Data.Entities
     public class Scripts
     {
         public int Id { get; set; }
-        public string TaskName { get; set; }
-        public string Script { get; set; }
+        public string? TaskName { get; set; }
+        public string? Script { get; set; }
 
         [Column("lastUpdate")]
         public DateTime? LastUpdate { get; set; }
